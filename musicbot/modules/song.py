@@ -82,7 +82,7 @@ async def youtube_proc(results:List,message: Message,m: Message):
 @Client.on_message(command("y") & ~filters.edited)
 async def yt_song(_,message: Message):
     if len(message.command) == 1:
-        m = await message.reply_text("请使用 '/yt 歌曲名' 来搜索歌曲")
+        m = await message.reply_text("请使用 '/y 歌曲名' 来搜索歌曲")
         await sleep(5)
         await m.delete()
         await message.delete()

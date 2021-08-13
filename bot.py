@@ -9,6 +9,11 @@ import config
 def help():
     return "'bot.py -c <configpath>'"
 
+def sendmsg(bot,chatid,msg,debug=True):
+    if debug:
+        print(f"{chatid}\n{msg}")
+    else:
+        bot.send_message(chatid,msg)
 
 if __name__ == '__main__':
     try:
@@ -30,9 +35,10 @@ if __name__ == '__main__':
     except FileNotFoundError:
         print(f"config.json not found.Generate a new configuration file in {config.config_file}")
         config.set_default()
-        sys.exit(2)
 
-    updater = Updater(CONFIG['Token'], use_context=True)
+    ENV = config.ENV
+
+    updater = Updater(ENV.BOT_TOKEN, use_context=True)
     dispatcher = updater.dispatcher
 
     me = updater.bot.get_me()
@@ -46,6 +52,8 @@ if __name__ == '__main__':
     commands += groupcmd.add_dispatcher(dispatcher)
     from cmdproc import reportcmd
     commands += reportcmd.add_dispatcher(dispatcher)
+    from cmdproc import infocmd
+    commands += infocmd.add_dispatcher(dispatcher)
 
     updater.bot.set_my_commands(commands)
 

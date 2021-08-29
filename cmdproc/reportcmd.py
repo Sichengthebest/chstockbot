@@ -1,12 +1,11 @@
-from telegram import Update, ForceReply,BotCommand,ParseMode
-from telegram.error import BadRequest, TelegramError
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
+from telegram import Update, BotCommand, ParseMode
+from telegram.error import BadRequest
+from telegram.ext import CommandHandler, CallbackContext, CallbackQueryHandler
 from telegram.inline.inlinekeyboardbutton import InlineKeyboardButton
 from telegram.inline.inlinekeyboardmarkup import InlineKeyboardMarkup
 from telegram.user import User
 from config import ENV
-from util.tgutil import get_user_link,delay_del_msg
-from telegram.utils.helpers import escape_markdown
+from util.tgutil import get_user_link, delay_del_msg, get_group_info
 
 admingroup = ENV.ADMIN_GROUP
 groups = ENV.GROUPS
@@ -53,16 +52,17 @@ def report_user(update: Update, context:CallbackContext):
     # 先把原来的消息转发到管理群
     try:
         no_forward = False
-        msg = report_msg.forward(admingroup, disable_notification=True)   # TODO: 不知道为什么不能转发毛台飘飘的消息
+        msg = report_msg.forward(admingroup, disable_notification=True) 
     except BadRequest:
         no_forward = True
     # 给出踢人的提示
     msg_text = f"被举报人：{reportee if isinstance(reportee,str) else get_user_link(reportee)} 举报人：{get_user_link(reporter)}\n请仔细检查举报信息，决定是否处理举报。"
     reportee_id = "null" if isinstance(reportee,str) else reportee.id
     reportee_name = reportee if isinstance(reportee,str) else reportee.first_name
+    # 在callback_data里加入被举报人的id和举报人的名字，举报人干掉的按钮里，后为0
     keyboard = [[
-        InlineKeyboardButton(text=f"干掉{reportee_name}", callback_data=f"kick:{reportee_id}"),
-        InlineKeyboardButton(text=f"干掉{reporter.first_name}", callback_data=f"kick:{reporter.id}")
+        InlineKeyboardButton(text=f"干掉{reportee_name}", callback_data=f"kick:{reportee_id}:{reporter.id}"),
+        InlineKeyboardButton(text=f"干掉{reporter.first_name}", callback_data=f"kick:{reporter.id}:0")
     ]]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -76,7 +76,7 @@ def report_user(update: Update, context:CallbackContext):
     delay_del_msg(context,send_msg,10)
 
 def kick_user(update: Update, context:CallbackContext):
-    kick_user = update.callback_query.data.split('kick:')[1]
+    kick_user,report_user = update.callback_query.data.split('kick:')[1].split(':')
     if str(update.effective_user.id) not in admins:
         update.callback_query.answer(text="哥们，你还不是管理员，请升级为管理员后再按～",show_alert=True)
         return
@@ -85,24 +85,34 @@ def kick_user(update: Update, context:CallbackContext):
         return
     count = 0
     kick_count = 0
+    kick_group = []
+    kick_group_msg = ""
     for group in groups:
         count += 1
         try:
             cm = context.bot.get_chat_member(group,kick_user)
             if cm.status == cm.MEMBER:
                 if not ENV.DEBUG:
-                    context.bot.ban_chat_member(group,kick_user)
+                    context.bot.ban_chat_member(group,kick_user,revoke_messages=True)
                 kick_count += 1
-                # if ENV.DEBUG:
-                #     # 测试时解除banned
-                #     context.bot.unban_chat_member(group,kick_user)
+                kick_group.append(context.bot.get_chat(group))
         except BadRequest:
             context.bot.send_message(admingroup,f"Bot在{group}里不是管理员")
     kick_user = context.bot.get_chat(kick_user)
+    for group in kick_group:
+        kick_group_msg += f"{get_group_info(group)}\n"
     context.bot.send_message(
         admingroup,
-        f" {get_user_link(update.effective_user)} 把 {get_user_link(kick_user)} 从毛票教{count}个群中的{kick_count}个群轻轻的碾压出去了",
+        f" {get_user_link(update.effective_user)} 把 {get_user_link(kick_user)} 从毛票教{count}个群中的{kick_count}个群:\n{kick_group_msg}轻轻的碾压出去了",
         parse_mode=ParseMode.MARKDOWN_V2)
+    if report_user == "0":
+        response = f"由于恶意举报，您已被移除出群！"
+    else:
+        response = f"您的举报已经被管理员处理，感谢您的贡献！"
+    context.bot.send_message(
+        update.effective_user.id,
+        response
+    )
 
 def add_dispatcher(dp):
     dp.add_handler(CommandHandler("r", report_user))
